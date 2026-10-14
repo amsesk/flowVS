@@ -29,9 +29,16 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   min.range = quantile(y,borderQuant) 
   max.range = quantile(y,1-borderQuant)
   y = y[y>min.range & y<max.range]
+  emptyStats = function()
+  {
+    m = matrix(nrow=0, ncol=4)
+    colnames(m) = c('n', 'mean', 'median', 'variance')
+    m
+  }
+  ## warn only: processing continues exactly as it did before this check existed
   if(length(y) < 10 || length(unique(y)) < 2)
-    stop("densityPeaks: marker '", stain, "' has too few usable events after trimming (n=", length(y),
-         ", distinct values=", length(unique(y)), "); cannot estimate density peaks")
+    warning("densityPeaks: marker '", stain, "' has few usable events after trimming (n=", length(y),
+            ", distinct values=", length(unique(y)), ")", call.=FALSE)
   mat = as.matrix(y)
   colnames(mat) = stain
   ff = flowFrame(mat)
@@ -43,10 +50,8 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   ## curvPeaks returns a single NA row when no peak region is found
   if(all(is.na(peaks)))
   {
-    warning("densityPeaks: no density peaks detected for marker '", stain, "'; returning no populations")
-    peaksStats = matrix(nrow=0, ncol=4)
-    colnames(peaksStats) = c('n', 'mean', 'median', 'variance')
-    return (peaksStats)
+    warning("densityPeaks: no density peaks detected for marker '", stain, "'; returning no populations", call.=FALSE)
+    return (emptyStats())
   }
 
   ## remove peaks with low densities , follow Ryan Brinkman's paper standard
@@ -128,12 +133,18 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
     
     
     if(length(right) != 1 || is.na(right))
-      stop("densityPeaks['", stain, "']: no density minimum between peaks ", i, " and ", i+1,
-           " (x=", peaks[i,1], ", ", peaks[i+1,1], ")")
+    {
+      warning("densityPeaks['", stain, "']: no density minimum between peaks ", i, " and ", i+1,
+              " (x=", peaks[i,1], ", ", peaks[i+1,1], "); returning no populations", call.=FALSE)
+      return (emptyStats())
+    }
     y.sel = y[y>=left & y<=right]
     if(length(y.sel) == 0)
-      stop("densityPeaks['", stain, "']: no events in population ", i, "/", nrow(peaks),
-           " (left=", left, ", right=", right, ")")
+    {
+      warning("densityPeaks['", stain, "']: no events in population ", i, "/", nrow(peaks),
+              " (left=", left, ", right=", right, "); returning no populations", call.=FALSE)
+      return (emptyStats())
+    }
     min.range = quantile(y.sel,populationQuant)
     max.range = quantile(y.sel,1-populationQuant)
     #cat(left, ' ', right, p[1],' ',min.range,' ', max.range, ' \n')
@@ -146,9 +157,13 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
       r = (max.range-p[1])/(p[1]-min.range)
       #print(r)
       if(is.na(r))  # NA or NaN
-        stop("densityPeaks['", stain, "']: undefined skew ratio for peak ", i, "/", nrow(peaks),
-             " (peak=", p[1], ", min.range=", min.range, ", max.range=", max.range,
-             ", n=", length(y.sel), "). Population is degenerate (constant values?)")
+      {
+        warning("densityPeaks['", stain, "']: undefined skew ratio for peak ", i, "/", nrow(peaks),
+                " (peak=", p[1], ", min.range=", min.range, ", max.range=", max.range,
+                ", n=", length(y.sel), "); population is degenerate (constant values?); returning no populations",
+                call.=FALSE)
+        return (emptyStats())
+      }
       if(r >=3 && i==nrow(peaks)) ##rightmost popualtion 
       {
         right = min(max.range, p[1]+3*(p[1]-min.range)  )

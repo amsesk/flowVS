@@ -84,24 +84,49 @@ transFlowVS = function(fs, channels, cofactors)
 ## Output: A numeric vector representing the optimum cofactors for 
 ## ========================================================================================
 
+## ========================================================================================
+## Internal function
+## Run densityPeaks on one sample. Warnings are re-issued immediately, prefixed with the
+## sample index/name. An error is not raised but returned as a message in $err so that the
+## caller can collect failures across all samples.
+## ========================================================================================
+safeDensityPeaks=function(.i, .sname, ...)
+{
+  err = NULL
+  stat = withCallingHandlers(
+    tryCatch(densityPeaks(...),
+             error = function(e) { err <<- paste0("sample ", .i, " (", .sname, "): ", conditionMessage(e)); NULL }),
+    warning = function(w) {
+      warning("sample ", .i, " (", .sname, "): ", conditionMessage(w), call.=FALSE, immediate.=TRUE)
+      invokeRestart("muffleWarning")
+    })
+  list(stat=stat, err=err)
+}
+
 flowVS1D=function(cofactor, fs1D, bwFac = 2, plot=FALSE, MAX_BT=10^9, save.plot=FALSE, populationQuant=.01, borderQuant=0.001, 
                   annotation="",save.folder="peaks", ...)
 {
     peakStats = matrix(nrow=0, ncol=5)
     colnames(peakStats) = c("n", "mean", "median", "variance", "sample")
     stain = colnames(fs1D)[1]
+    failures = character()
     for(i in 1:length(fs1D))  # this loop can be parallelized
     {
       y = exprs(fs1D[[i]])[,1]
       y = asinh(y/cofactor)
-      peakStat = tryCatch(
-        densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
-                     annotation=paste(i),save.folder="", ...),
-        error = function(e) stop("sample ", i, " (", sampleNames(fs1D)[i], "), cofactor ", cofactor, ": ",
-                                 conditionMessage(e), call.=FALSE))
-      peakStat = cbind(peakStat, rep(i, nrow(peakStat)))
+      res = safeDensityPeaks(i, sampleNames(fs1D)[i], y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
+                             annotation=paste(i),save.folder="", ...)
+      if(!is.null(res$err))
+      {
+        failures = c(failures, res$err)
+        next
+      }
+      peakStat = cbind(res$stat, rep(i, nrow(res$stat)))
       peakStats = rbind(peakStats, peakStat)
     }
+    if(length(failures) > 0)
+      stop("peak detection failed for ", length(failures), " sample(s) at cofactor ", cofactor, ":\n",
+           paste(failures, collapse="\n"), call.=FALSE)
     # remove outlying samples
     # if most of the samples contains k peaks except a few
     # then it is possible that peaks are not identified properly for the few samples.
@@ -154,18 +179,24 @@ peakStats1D=function(fs1D, bwFac = 2, plot=FALSE, save.plot=FALSE, populationQua
   peakStats = matrix(nrow=0, ncol=5)
   colnames(peakStats) = c("n", "mean", "median", "variance", "sample")
   stain = colnames(fs1D)[1]
+  failures = character()
   for(i in 1:length(fs1D))  # this loop can be parallelized
   {
     y = exprs(fs1D[[i]])[,1]
     y = (y-min(y))/(max(y) - min(y))
-    peakStat = tryCatch(
-      densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
-                   annotation=paste(i),save.folder="", ...),
-      error = function(e) stop("sample ", i, " (", sampleNames(fs1D)[i], "): ",
-                               conditionMessage(e), call.=FALSE))
-    peakStat = cbind(peakStat, rep(i, nrow(peakStat)))
+    res = safeDensityPeaks(i, sampleNames(fs1D)[i], y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
+                           annotation=paste(i),save.folder="", ...)
+    if(!is.null(res$err))
+    {
+      failures = c(failures, res$err)
+      next
+    }
+    peakStat = cbind(res$stat, rep(i, nrow(res$stat)))
     peakStats = rbind(peakStats, peakStat)
   }
+  if(length(failures) > 0)
+    stop("peak detection failed for ", length(failures), " sample(s):\n",
+         paste(failures, collapse="\n"), call.=FALSE)
 
   peakStats1 = peakStats
   # remove outlying samples
