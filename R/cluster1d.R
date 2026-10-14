@@ -29,6 +29,9 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   min.range = quantile(y,borderQuant) 
   max.range = quantile(y,1-borderQuant)
   y = y[y>min.range & y<max.range]
+  if(length(y) < 10 || length(unique(y)) < 2)
+    stop("densityPeaks: marker '", stain, "' has too few usable events after trimming (n=", length(y),
+         ", distinct values=", length(unique(y)), "); cannot estimate density peaks")
   mat = as.matrix(y)
   colnames(mat) = stain
   ff = flowFrame(mat)
@@ -36,7 +39,15 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   curv1.filter <- filter(ff, curv1Filter(stain,bwFac=bwFac))
   bnds <- curvPeaks(curv1.filter, y)
   peaks = bnds$peaks
-  
+
+  ## curvPeaks returns a single NA row when no peak region is found
+  if(all(is.na(peaks)))
+  {
+    warning("densityPeaks: no density peaks detected for marker '", stain, "'; returning no populations")
+    peaksStats = matrix(nrow=0, ncol=4)
+    colnames(peaksStats) = c('n', 'mean', 'median', 'variance')
+    return (peaksStats)
+  }
 
   ## remove peaks with low densities , follow Ryan Brinkman's paper standard
   
@@ -116,9 +127,15 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
     }
     
     
+    if(length(right) != 1 || is.na(right))
+      stop("densityPeaks['", stain, "']: no density minimum between peaks ", i, " and ", i+1,
+           " (x=", peaks[i,1], ", ", peaks[i+1,1], ")")
     y.sel = y[y>=left & y<=right]
-    min.range = quantile(y.sel,populationQuant) 
-    max.range = quantile(y.sel,1-populationQuant) 
+    if(length(y.sel) == 0)
+      stop("densityPeaks['", stain, "']: no events in population ", i, "/", nrow(peaks),
+           " (left=", left, ", right=", right, ")")
+    min.range = quantile(y.sel,populationQuant)
+    max.range = quantile(y.sel,1-populationQuant)
     #cat(left, ' ', right, p[1],' ',min.range,' ', max.range, ' \n')
     
     
@@ -128,6 +145,10 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
       ### check skewness in the population 
       r = (max.range-p[1])/(p[1]-min.range)
       #print(r)
+      if(is.na(r))  # NA or NaN
+        stop("densityPeaks['", stain, "']: undefined skew ratio for peak ", i, "/", nrow(peaks),
+             " (peak=", p[1], ", min.range=", min.range, ", max.range=", max.range,
+             ", n=", length(y.sel), "). Population is degenerate (constant values?)")
       if(r >=3 && i==nrow(peaks)) ##rightmost popualtion 
       {
         right = min(max.range, p[1]+3*(p[1]-min.range)  )

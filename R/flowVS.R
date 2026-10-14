@@ -94,10 +94,13 @@ flowVS1D=function(cofactor, fs1D, bwFac = 2, plot=FALSE, MAX_BT=10^9, save.plot=
     {
       y = exprs(fs1D[[i]])[,1]
       y = asinh(y/cofactor)
-      peakStat = densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant, 
-                              annotation=paste(i),save.folder="", ...)
-      peakStat = cbind(peakStat, rep(i, nrow(peakStat))) 
-      peakStats = rbind(peakStats, peakStat)        
+      peakStat = tryCatch(
+        densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
+                     annotation=paste(i),save.folder="", ...),
+        error = function(e) stop("sample ", i, " (", sampleNames(fs1D)[i], "), cofactor ", cofactor, ": ",
+                                 conditionMessage(e), call.=FALSE))
+      peakStat = cbind(peakStat, rep(i, nrow(peakStat)))
+      peakStats = rbind(peakStats, peakStat)
     }
     # remove outlying samples
     # if most of the samples contains k peaks except a few
@@ -155,12 +158,15 @@ peakStats1D=function(fs1D, bwFac = 2, plot=FALSE, save.plot=FALSE, populationQua
   {
     y = exprs(fs1D[[i]])[,1]
     y = (y-min(y))/(max(y) - min(y))
-    peakStat = densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant, 
-                            annotation=paste(i),save.folder="", ...)
-    peakStat = cbind(peakStat, rep(i, nrow(peakStat))) 
-    peakStats = rbind(peakStats, peakStat)        
+    peakStat = tryCatch(
+      densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant,
+                   annotation=paste(i),save.folder="", ...),
+      error = function(e) stop("sample ", i, " (", sampleNames(fs1D)[i], "): ",
+                               conditionMessage(e), call.=FALSE))
+    peakStat = cbind(peakStat, rep(i, nrow(peakStat)))
+    peakStats = rbind(peakStats, peakStat)
   }
-  
+
   peakStats1 = peakStats
   # remove outlying samples
   # if most of the samples contains k peaks except a few
