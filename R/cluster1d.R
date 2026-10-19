@@ -133,18 +133,12 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
     
     
     if(length(right) != 1 || is.na(right))
-    {
-      warning("densityPeaks['", stain, "']: no density minimum between peaks ", i, " and ", i+1,
-              " (x=", peaks[i,1], ", ", peaks[i+1,1], "); returning no populations", call.=FALSE)
-      return (emptyStats())
-    }
+      stop("densityPeaks['", stain, "']: no density minimum between peaks ", i, " and ", i+1,
+           " (x=", peaks[i,1], ", ", peaks[i+1,1], ")", call.=FALSE)
     y.sel = y[y>=left & y<=right]
     if(length(y.sel) == 0)
-    {
-      warning("densityPeaks['", stain, "']: no events in population ", i, "/", nrow(peaks),
-              " (left=", left, ", right=", right, "); returning no populations", call.=FALSE)
-      return (emptyStats())
-    }
+      stop("densityPeaks['", stain, "']: no events in population ", i, "/", nrow(peaks),
+           " (left=", left, ", right=", right, ")", call.=FALSE)
     min.range = quantile(y.sel,populationQuant)
     max.range = quantile(y.sel,1-populationQuant)
     #cat(left, ' ', right, p[1],' ',min.range,' ', max.range, ' \n')
@@ -157,13 +151,9 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
       r = (max.range-p[1])/(p[1]-min.range)
       #print(r)
       if(is.na(r))  # NA or NaN
-      {
-        warning("densityPeaks['", stain, "']: undefined skew ratio for peak ", i, "/", nrow(peaks),
-                " (peak=", p[1], ", min.range=", min.range, ", max.range=", max.range,
-                ", n=", length(y.sel), "); population is degenerate (constant values?); returning no populations",
-                call.=FALSE)
-        return (emptyStats())
-      }
+        stop("densityPeaks['", stain, "']: undefined skew ratio for peak ", i, "/", nrow(peaks),
+             " (peak=", p[1], ", min.range=", min.range, ", max.range=", max.range,
+             ", n=", length(y.sel), "); population is degenerate (constant values?)", call.=FALSE)
       if(r >=3 && i==nrow(peaks)) ##rightmost popualtion 
       {
         right = min(max.range, p[1]+3*(p[1]-min.range)  )
