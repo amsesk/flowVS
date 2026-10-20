@@ -41,6 +41,8 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   {
     diagEnv$n_events_trimmed = length(y)
     diagEnv$stage1_rawPeaks = peaks
+    diagEnv$stage1_regions = bnds$regions
+    diagEnv$stage1_grid = c(from=min(y), to=max(y))
   }
   
 
