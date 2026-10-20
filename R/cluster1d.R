@@ -12,7 +12,7 @@
 ###############################################################################
 
 densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, populationQuant=.01, borderQuant=0.001, 
-                      peak.density.thr=0.05, peak.distance.thr=0.05, annotation="",save.folder="", ...)
+                      peak.density.thr=0.05, peak.distance.thr=0.05, annotation="",save.folder="", diagEnv=NULL, ...)
 {
   ## some type checking first
   checkClass(y, "numeric")
@@ -36,6 +36,12 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   curv1.filter <- filter(ff, curv1Filter(stain,bwFac=bwFac))
   bnds <- curvPeaks(curv1.filter, y)
   peaks = bnds$peaks
+  ## DIAGNOSTIC stage 1: raw peaks from curvPeaks
+  if(!is.null(diagEnv))
+  {
+    diagEnv$n_events_trimmed = length(y)
+    diagEnv$stage1_rawPeaks = peaks
+  }
   
 
   ## remove peaks with low densities , follow Ryan Brinkman's paper standard
@@ -95,8 +101,20 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   peaksStats = matrix(nrow=0, ncol=4)
   colnames(peaksStats) = c('n', 'mean', 'median', 'variance')
 
+  ## DIAGNOSTIC stage 2: peaks after removal of close peaks
+  if(!is.null(diagEnv))
+  {
+    diagEnv$removed_close_peaks = peak.rm.idx
+    diagEnv$stage2_filteredPeaks = peaks
+    diagEnv$populations = list()
+  }
   if(nrow(peaks)==0)
+  {
+    if(!is.null(diagEnv)) diagEnv$returned = peaksStats
     return (peaksStats)
+  }
+  rec = NULL
+  saveRec = function() if(!is.null(diagEnv)) diagEnv$populations[[i]] = rec
   # find the minima between every consecutive pairs of peaks 
   left = min(y, na.rm=TRUE)
   bounds = vector()
@@ -123,14 +141,23 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
     
     
     #population = y.sel[ y.sel>=min.range & y.sel<= max.range]
+    ## DIAGNOSTIC stage 3: per-population values (saved before anything that can fail)
+    rec = list(population=i, npeaks=nrow(peaks), peak=p, left=left, right=right,
+               n_ysel=length(y.sel), min.range=min.range, max.range=max.range,
+               r=NA_real_, branch=NA_character_, n_population=NA_integer_,
+               row_appended=FALSE, rare_added=FALSE, skipped_na_peak=is.na(p[1]))
+    saveRec()
     if(!is.na(p[1]))
     {
       ### check skewness in the population 
       r = (max.range-p[1])/(p[1]-min.range)
+      rec$r = r
+      saveRec()
       #print(r)
       if(r >=3 && i==nrow(peaks)) ##rightmost popualtion 
       {
         right = min(max.range, p[1]+3*(p[1]-min.range)  )
+        rec$branch = "rightmost_skew"
         y.sel = y[y>=left & y<=right]
         min.range = quantile(y.sel,populationQuant) 
         max.range = quantile(y.sel,1-populationQuant)
@@ -138,15 +165,22 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
       {
         #print('hhh')
         left = max(min.range, p[1]-3*(max.range-p[1])  )
+        rec$branch = "leftmost_skew"
         y.sel = y[y>=left & y<=right]
         min.range = quantile(y.sel,populationQuant) 
         max.range = quantile(y.sel,1-populationQuant)
       }
       population = y.sel[ y.sel>=min.range & y.sel<= max.range]
+      rec$left_final = left; rec$right_final = right
+      rec$min.range_final = min.range; rec$max.range_final = max.range
+      rec$n_population = length(population)
+      saveRec()
       if(length(population)!=0)
       {
         peaksStats = rbind(peaksStats, c(length(population), mean(population), median(population), var(population))) 
         populations[[length(populations)+1]] = population
+        rec$row_appended = TRUE; rec$row = peaksStats[nrow(peaksStats),]
+        saveRec()
         bounds = c(bounds, min.range,max.range)
         if(i< nrow(peaks)) separators = c(separators, right)   
       }
@@ -164,6 +198,8 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
         if(length(rare)!=0)
         {
           populations[[length(populations)+1]] = rare
+          rec$rare_added = TRUE; rec$rare_n = length(rare)
+          saveRec()
           separators = c(separators, left)
           bounds = c(bounds, min.range,max.range)
         }
@@ -172,6 +208,12 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
     
   }
   
+  if(!is.null(diagEnv))
+  {
+    diagEnv$separators = separators
+    diagEnv$bounds = bounds
+    diagEnv$returned = peaksStats
+  }
   if(plot && nrow(peaksStats)>0)
   {
     main.text = paste("Peaks for", stain)

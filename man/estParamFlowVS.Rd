@@ -22,7 +22,7 @@ We consider transforming \code{z} by asinh transformation such that after transf
 The \code{estParamFlowVS} function estimates cofactors, one for each channel for the entire dataset such that the within-population variance is stabilized in each fluorescence channel. When a fluorescence channel \code{z} is transformed by asinh transformation with the optimum cofactor for \code{z}, the within-population variances of populations from all samples in the channel \code{z}  are approximately stabilized. 
 }
 \value{
-  \code{estParamFlowVS} returns a numeric vector representing the optimum cofactors for the requested channels. The optimum cofactor for the input \code{channels[i]} is stored in the \code{i}th entry of the returned vector.
+  DIAGNOSTIC BRANCH: \code{estParamFlowVS} returns a list with \code{cofactors} (numeric vector of optimum cofactors, in the order of \code{channels}) and \code{diagnostics}, a list named by channel. Each element holds \code{cofactor}, \code{error} (message if the search aborted) and \code{evaluations}: one entry per cofactor evaluated (\code{channel}, \code{phase}, \code{cofactor}, \code{bartlett}, \code{peakStats_all}, \code{samples}). Each element of \code{samples} records, for one sample, the \code{densityPeaks} stages: \code{stage1_rawPeaks}, \code{stage2_filteredPeaks}, \code{populations} (one record per peak), \code{separators}, \code{bounds}, \code{returned} and, if it failed, \code{error}.
 }
 \references{
   Ariful Azad, Bartek Rajwa, and Alex Pothen (2015), "flowVS: Channel-Specific Variance Stabilization in Flow Cytometry", BMC Bioinformatics, vol 17, pp 1-14, 2016.

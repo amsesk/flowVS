@@ -20,6 +20,7 @@ estParamFlowVS = function(fs, channels, optimStat_additional_args=list())
     stop(" At least one channel name is not present in the flowSet.")
   
   cofactors = NULL
+  diagnostics = list()
   ## estimate optimum cofactors
   for(col in channels)
   {
@@ -28,12 +29,18 @@ estParamFlowVS = function(fs, channels, optimStat_additional_args=list())
     cat("Finding optimum cofactor for asinh transformation\n")
     cat("====================================================================\n")
     fs1D = fs[,col]
-    cf = do.call(optimStat, c(list(fs1D=fs1D), optimStat_additional_args))
+    diagLog = new.env()
+    diagLog$entries = list()
+    diagLog$phase = NA_character_
+    diagLog$error = NULL
+    cf = tryCatch(do.call(optimStat, c(list(fs1D=fs1D, diagLog=diagLog), optimStat_additional_args)),
+                  error = function(e) { diagLog$error = conditionMessage(e); NA_real_ })
+    diagnostics[[col]] = list(cofactor=cf, error=diagLog$error, evaluations=diagLog$entries)
     cofactors = c(cofactors, cf)
     cat("\n Optimum cofactor for ", col, " : ", cf, "\n")
     cat("====================================================================\n\n")
   }
-  return (cofactors)
+  return (list(cofactors=cofactors, diagnostics=diagnostics))
 }
 
 
@@ -87,19 +94,45 @@ transFlowVS = function(fs, channels, cofactors)
 ## ========================================================================================
 
 flowVS1D=function(cofactor, fs1D, bwFac = 2, plot=FALSE, MAX_BT=10^9, save.plot=FALSE, populationQuant=.01, borderQuant=0.001, 
-                  annotation="",save.folder="peaks", ...)
+                  annotation="",save.folder="peaks", diagLog=NULL, ...)
 {
     peakStats = matrix(nrow=0, ncol=5)
     colnames(peakStats) = c("n", "mean", "median", "variance", "sample")
     stain = colnames(fs1D)[1]
+    sampleLog = list()
     for(i in 1:length(fs1D))  # this loop can be parallelized
     {
       y = exprs(fs1D[[i]])[,1]
       y = asinh(y/cofactor)
-      peakStat = densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant, 
-                              annotation=paste(i),save.folder="", ...)
+      sampleDiag = if(is.null(diagLog)) NULL else new.env()
+      runDensityPeaks = function() densityPeaks(y, stain, bwFac = bwFac, plot=plot, save.plot=save.plot, populationQuant=populationQuant, borderQuant=borderQuant, 
+                              annotation=paste(i),save.folder="", diagEnv=sampleDiag, ...)
+      if(is.null(diagLog))
+      {
+        peakStat = runDensityPeaks()
+      }else
+      {
+        ## DIAGNOSTIC: record an error instead of aborting so that all samples are reported;
+        ## a sample that errors contributes no rows (this is the only change in control flow)
+        peakStat = tryCatch(runDensityPeaks(), error = function(e)
+        {
+          sampleDiag$error = conditionMessage(e)
+          empty = matrix(nrow=0, ncol=4)
+          colnames(empty) = c('n', 'mean', 'median', 'variance')
+          empty
+        })
+        sampleLog[[i]] = c(list(sample=i, name=sampleNames(fs1D)[i], n_events=length(y)),
+                           as.list(sampleDiag, sorted=TRUE))
+      }
       peakStat = cbind(peakStat, rep(i, nrow(peakStat))) 
       peakStats = rbind(peakStats, peakStat)        
+    }
+    entryIdx = NA_integer_
+    if(!is.null(diagLog))
+    {
+      entryIdx = length(diagLog$entries) + 1
+      diagLog$entries[[entryIdx]] = list(channel=stain, phase=diagLog$phase, cofactor=cofactor,
+                                         bartlett=NA_real_, peakStats_all=peakStats, samples=sampleLog)
     }
     # remove outlying samples
     # if most of the samples contains k peaks except a few
@@ -140,6 +173,8 @@ flowVS1D=function(cofactor, fs1D, bwFac = 2, plot=FALSE, MAX_BT=10^9, save.plot=
       bt = MAX_BT
     else
       bt = bartlettTest(peakStats)
+    if(!is.null(diagLog))
+      diagLog$entries[[entryIdx]]$bartlett = bt
     return (bt)
     #return (peakStats)
 }
@@ -240,7 +275,7 @@ bartlettTest = function(peakStats)
 #                       (log scale)
 # output: optimum cofactor 
 ##============================================================
-optimStat = function(fs1D, cfLow=-1, cfHigh=10, MAX_BT=10^9)
+optimStat = function(fs1D, cfLow=-1, cfHigh=10, MAX_BT=10^9, diagLog=NULL)
 {
   if(cfLow>=cfHigh)
   {
@@ -257,9 +292,11 @@ optimStat = function(fs1D, cfLow=-1, cfHigh=10, MAX_BT=10^9)
   cat("====================================================================\n")
   for(i in 1:(ncf-1))
   {
+    if(!is.null(diagLog))
+      diagLog$phase = paste0("interval_", i, "_logcf[", cf[i], ",", cf[i+1], "]")
     ptm <- proc.time()
     tol = (exp(cf[i+1]) - exp(cf[i]))/10
-    opt = suppressWarnings(optimize(f = flowVS1D, interval = c(exp(cf[i]),exp(cf[i+1])), fs1D, tol=tol, plot=FALSE, MAX_BT=MAX_BT))
+    opt = suppressWarnings(optimize(f = flowVS1D, interval = c(exp(cf[i]),exp(cf[i+1])), fs1D, tol=tol, plot=FALSE, MAX_BT=MAX_BT, diagLog=diagLog))
     btopt[i] = opt$objective
     cfopt[i] = opt$minimum
     #cat('cf range= [',format(round(exp(cf[i]), 2), nsmall = 2), ',',
@@ -284,9 +321,11 @@ optimStat = function(fs1D, cfLow=-1, cfHigh=10, MAX_BT=10^9)
   cfLocal = c(5:1,cfopt[minIdx],1:5)
   cfLocal[1:5] = cfopt[minIdx] - 5:1 * del
   cfLocal[7:11] = cfopt[minIdx] + 1:5 * del
+  if(!is.null(diagLog))
+    diagLog$phase = "local_search"
   for(i in c(1:5,7:11))
   {
-    btLocal[i] = flowVS1D(cfLocal[i], fs1D)
+    btLocal[i] = flowVS1D(cfLocal[i], fs1D, diagLog=diagLog)
   }
   
   minIdx = which.min(btLocal)
