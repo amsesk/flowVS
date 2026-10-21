@@ -39,6 +39,7 @@ densityPeaks <- function(y, stain, bwFac = 2, plot=FALSE, save.plot=FALSE, popul
   ## DIAGNOSTIC stage 1: raw peaks from curvPeaks
   if(!is.null(diagEnv))
   {
+    diagEnv$curv1Filter_bnds = curv1.filter@subSet
     diagEnv$n_events_trimmed = length(y)
     diagEnv$stage1_rawPeaks = peaks
     diagEnv$stage1_regions = bnds$regions
