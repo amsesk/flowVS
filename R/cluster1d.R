@@ -227,6 +227,8 @@ curvPeaks <- function(x, dat, borderQuant=0.01, n=201, from, to, densities=NULL)
     checkClass(to, "numeric", 1)
     ## extract boundaries
     bound <- attr(x@subSet, "boundaries")
+    border_lower <- quantile(c(from,to), borderQuant)
+    border_upper <- quantile(c(from,to), 1-borderQuant)
     
     dens <- if(!is.null(densities)) densities else
     density(dat, n=n, from=from, to=to, na.rm=TRUE)$y
@@ -238,9 +240,13 @@ curvPeaks <- function(x, dat, borderQuant=0.01, n=201, from, to, densities=NULL)
         #oo <- options(warn=-1)
         #on.exit(options(oo))
         for(b in bound){
-            ## discard regions on the margins
-            if(b[2] > quantile(c(from,to), borderQuant) &&
-            b[1] < quantile(c(from,to), 1-borderQuant)){
+            ## discard regions that lie entirely within a margin
+            if(b[2] > border_lower && b[1] < border_upper){
+                ## clip regions that extend past the density grid [from, to]; approxfun returns
+                ## NA outside the grid, which makes optimize() return an NA objective and an
+                ## out-of-range maximum
+                b[1] <- max(b[1], from)
+                b[2] <- min(b[2], to)
                 ## approximate density by function
                 afun <- approxfun(seq(from, to, len=n), dens)
                 sel <- seq(b[1], b[2], len=50)
