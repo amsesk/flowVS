@@ -3,12 +3,14 @@
 ## Input:
 ##    fs: A flowSet containing a collection of flow cyometry samples. 
 ##    channels: A character vector identifying the channels/dimensions to be transformed.
+##    optimStat_additional_args: A named list of extra arguments passed to optimStat
+##      (e.g. list(cfLow=-1, cfHigh=5, MAX_BT=10^9)).
 ## Output: A numeric vector representing the optimum cofactors for 
 ##  the requested channels. The optimum cofactor for the input channels[i]
 ##  is stored in the ith entry of the returned vector
 ## ========================================================================================
 
-estParamFlowVS = function(fs, channels)
+estParamFlowVS = function(fs, channels, optimStat_additional_args=list())
 {
   ## some error checking
   checkClass(fs, "flowSet")
@@ -26,7 +28,7 @@ estParamFlowVS = function(fs, channels)
     cat("Finding optimum cofactor for asinh transformation\n")
     cat("====================================================================\n")
     fs1D = fs[,col]
-    cf = optimStat(fs1D)
+    cf = do.call(optimStat, c(list(fs1D=fs1D), optimStat_additional_args))
     cofactors = c(cofactors, cf)
     cat("\n Optimum cofactor for ", col, " : ", cf, "\n")
     cat("====================================================================\n\n")
